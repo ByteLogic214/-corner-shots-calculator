@@ -28,7 +28,7 @@ def main():
 
     client = StatsAPIClient()
 
-    # 1. Resolución de Identidades mediante búsqueda paramétrica corregida
+    # 1. Resolución de Identidades mediante búsqueda paramétrica
     home_id = client.search_team_id(args.home)
     away_id = client.search_team_id(args.away)
 
@@ -39,11 +39,15 @@ def main():
     h_feat = extract_advanced_features(h_matches, home_id)
     a_feat = extract_advanced_features(a_matches, away_id)
 
+    if not h_feat or not a_feat:
+        print("Error: No se pudieron extraer métricas de los equipos.")
+        return
+
     # 3. Modelado Estadístico
     bayesian_corners = BayesianHierarchicalEngine.posterior_corners_estimate(h_feat, a_feat)
-    expected_shots_tot = h_feat["weighted_shots_total"] + a_feat["weighted_shots_total"]
-    expected_shots_target = h_feat["weighted_shots_target"] + a_feat["weighted_shots_target"]
-    total_variance = h_feat["var_corners"] + a_feat["var_corners"]
+    expected_shots_tot = h_feat.get("weighted_shots_total", 0) + a_feat.get("weighted_shots_total", 0)
+    expected_shots_target = h_feat.get("weighted_shots_target", 0) + a_feat.get("weighted_shots_target", 0)
+    total_variance = h_feat.get("var_corners", 1.0) + a_feat.get("var_corners", 1.0)
 
     time_decay = 1.0
     target_line = 9.5
