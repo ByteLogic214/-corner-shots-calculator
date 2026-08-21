@@ -2,13 +2,25 @@ import numpy as np
 
 def _safe_numeric(value, sub_key="total", default=0) -> float:
     """
-    Función auxiliar para normalizar valores de la API.
-    Si el valor es un diccionario, extrae la sub-clave numérica.
-    Si es un entero o flotante directo, lo retorna.
+    Función auxiliar recursiva para desempaquetar diccionarios profundamente anidados
+    y extraer de forma segura valores numéricos reales, evitando colapsos por tipo de dato.
     """
-    if isinstance(value, dict):
-        # Intenta buscar 'total', 'value' o toma el primer valor numérico disponible
-        return float(value.get(sub_key, value.get("value", value.get("total_shots", default))))
+    if value is None:
+        return float(default)
+        
+    # Si sigue siendo un diccionario, se descompone de forma iterativa profunda
+    while isinstance(value, dict):
+        if not value: # Diccionario vacío
+            return float(default)
+        # Intenta extraer mediante las claves estándar ordenadas por prioridad
+        next_value = value.get(sub_key, value.get("value", value.get("total", value.get("total_shots", None))))
+        if next_value is None:
+            # Fallback: Si no encuentra las claves, toma el primer valor del diccionario
+            first_key = list(value.keys())[0]
+            value = value[first_key]
+        else:
+            value = next_value
+
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -27,16 +39,13 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         if not st:
             continue
             
-        # Determinar si el equipo consultado jugó como local o visitante
         is_home = (match.get("home_team_id") == team_id) or (match.get("home_team", {}).get("id") == team_id)
         pfx = "home" if is_home else "away"
 
         # Extraer el bloque de datos correspondiente al lado del equipo
         side_data = st.get(pfx, st)
-        if not isinstance(side_data, dict):
-            side_data = st
 
-        # 1. Extracción de métricas base con fallback de claves comunes de la API
+        # 1. Extracción de métricas base
         raw_c = side_data.get("corners", side_data.get(f"corners_{pfx}", 0))
         raw_st_tot = side_data.get("shots", side_data.get("total_shots", side_data.get(f"total_shots_{pfx}", 0)))
         raw_st_tar = side_data.get("shots_on_target", side_data.get(f"shots_on_target_{pfx}", 0))
@@ -48,7 +57,7 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         raw_ppda = side_data.get("ppda", side_data.get(f"ppda_{pfx}", 12.0))
         raw_xt = side_data.get("expected_threat", side_data.get(f"expected_threat_{pfx}", 1.0))
 
-        # 2. CORRECCIÓN CRÍTICA: Normalización numérica anti-diccionarios anidados
+        # 2. Normalización profunda robusta anti-anidamiento
         c = _safe_numeric(raw_c, sub_key="total", default=0)
         st_tot = _safe_numeric(raw_st_tot, sub_key="total", default=0)
         st_tar = _safe_numeric(raw_st_tar, sub_key="total", default=0)
@@ -57,7 +66,7 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         
         blocked_crosses = _safe_numeric(raw_blocked_crosses, sub_key="total", default=0)
         wing_duels = _safe_numeric(raw_wing_duels, sub_key="total", default=0)
-        ppda = _safe_numeric(raw_ppda, sub_key="value", default=12.0) # PPDA suele usar 'value' o ser directo
+        ppda = _safe_numeric(raw_ppda, sub_key="value", default=12.0)
         xt = _safe_numeric(raw_xt, sub_key="total", default=1.0)
 
         # 3. Almacenamiento y cálculo de ratios tácticos continuos
@@ -68,7 +77,6 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         xa_list.append(xa)
         
         xt_list.append(xt)
-        # La comparación 'st_tot > 0' ahora es 100% segura ya que ambos lados son flotantes numéricos
         rot_list.append(st_tar / st_tot if st_tot > 0 else 0.33)
         cii_list.append(blocked_crosses + wing_duels)
         ppda_list.append(ppda)
