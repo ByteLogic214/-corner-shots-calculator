@@ -1,10 +1,8 @@
 import numpy as np
 
 def extract_advanced_features(matches: list, team_id: int) -> dict:
-    # 1. Asegurar el orden cronológico si la API los entrega al revés.
-    # Asumimos que los ordenamos de MÁS VIEJO a MÁS RECIENTE para que el final de la lista sea lo último.
-    # Si tu lista ya viene de más viejo a más reciente, puedes omitir este sort.
-    # matches = sorted(matches, key=lambda x: x.get("date", "")) 
+    if not matches:
+        return {}
 
     xt_list, rot_list, cii_list, ppda_list = [], [], [], []
     xg_list, xa_list = [], []
@@ -15,16 +13,15 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         is_home = (match.get("home_team_id") == team_id)
         pfx = "home" if is_home else "away"
 
-        # Captura de datos con fallbacks seguros
         c = st.get(f"corners_{pfx}", 0)
         st_tot = st.get(f"total_shots_{pfx}", 0)
         st_tar = st.get(f"shots_on_target_{pfx}", 0)
         xg = st.get(f"xg_{pfx}", 1.0)
         xa = st.get(f"xa_{pfx}", 1.0)
         
-        blocked_crosses = st.get(f"blocked_crosses_{pfx}", 0) # Mejor 0 que un hardcodeo alto
+        blocked_crosses = st.get(f"blocked_crosses_{pfx}", 0)
         wing_duels = st.get(f"wing_duels_won_{pfx}", 0)
-        ppda = st.get(f"ppda_{pfx}", 12.0) # 12.0 es un promedio de presión intermedio más realista
+        ppda = st.get(f"ppda_{pfx}", 12.0)
         xt = st.get(f"expected_threat_{pfx}", 1.0)
 
         corners_list.append(c)
@@ -38,20 +35,14 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         cii_list.append(blocked_crosses + wing_duels)
         ppda_list.append(ppda)
 
-    if not matches:
-        return {}
-
-    # 2. CORRECCIÓN LÍNEA TEMPORAL: 
-    # Si la lista va de más viejo a más reciente, queremos que el final tenga más peso.
-    # Generamos los índices invertidos para que el último partido (más reciente) tenga exponente 0 (peso = 1)
+    # Generación de la línea temporal: el partido más reciente obtiene el mayor peso (exponente 0)
     n_matches = len(matches)
-    time_indices = np.arange(n_matches)[::-1] # [5, 4, 3, 2, 1, 0] para 6 partidos
+    time_indices = np.arange(n_matches)[::-1]
     
     weights = np.exp(-0.1 * time_indices)
     weights /= weights.sum()
 
-    # 3. CORRECCIÓN MATEMÁTICA: Varianza Ponderada
-    # Varianza ponderada = suma(w * (x - media_ponderada)^2)
+    # Cálculo exacto de media y varianza ponderada temporalmente
     weighted_corners_mean = np.average(corners_list, weights=weights)
     variance_corners = np.average((np.array(corners_list) - weighted_corners_mean)**2, weights=weights)
 
@@ -65,5 +56,5 @@ def extract_advanced_features(matches: list, team_id: int) -> dict:
         "PPDA": float(np.average(ppda_list, weights=weights)),
         "xG": float(np.average(xg_list, weights=weights)),
         "xA": float(np.average(xa_list, weights=weights)),
-        "var_corners": float(variance_corners) # Ahora sí es coherente con los pesos temporales
+        "var_corners": float(variance_corners)
     }
