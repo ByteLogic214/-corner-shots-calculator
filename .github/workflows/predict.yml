@@ -23,7 +23,7 @@ on:
       is_live:
         description: '¿Es partido In-Play?'
         required: false
-        default: 'false' # CORRECCIÓN: Los valores por defecto siempre van entre comillas en GitHub Actions
+        default: 'false'
         type: boolean
       current_minute:
         description: 'Minuto actual (In-Play)'
