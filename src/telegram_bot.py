@@ -2,17 +2,13 @@ import os
 import requests
 
 def send_telegram_alert(message: str):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    
-    if not bot_token or not chat_id:
-        print("Telegram credentials no configuradas. Omitiendo envío.")
+    if not token or not chat_id:
         return
 
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-    requests.post(url, json=payload)
+    url = f"https://telegram.org{token}/sendMessage"
+    try:
+        requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}, timeout=5)
+    except requests.RequestException:
+        pass
