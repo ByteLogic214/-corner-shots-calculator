@@ -5,9 +5,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class StatsAPIClient:
     def __init__(self):
         self.api_key = os.getenv("THESTATSAPI_KEY")
-        self.base_url = "https://api.thestatsapi.com/v1/football"
+        self.base_url = "https://thestatsapi.com"
         
-        # CORRECCIÓN CRÍTICA: Autenticación mediante Bearer token en Authorization header
+        # Autenticación oficial mediante Bearer token
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {self.api_key}",
@@ -17,18 +17,30 @@ class StatsAPIClient:
     def get_competitions(self) -> list:
         res = self.session.get(f"{self.base_url}/competitions")
         res.raise_for_status()
-        return res.json().get("competitions", [])
+        return res.json().get("data", [])
 
     def search_team_id(self, team_name: str) -> int:
-        res = self.session.get(f"{self.base_url}/teams/search", params={"q": team_name})
+        """Busca el ID de un equipo usando parámetros reales filtrando coincidencias."""
+        res = self.session.get(
+            f"{self.base_url}/teams",
+            params={"search": team_name, "per_page": 100}
+        )
         res.raise_for_status()
-        results = res.json().get("results", [])
-        if not results:
-            raise ValueError(f"Equipo no encontrado en TheStatsAPI: {team_name}")
-        return results[0]["id"]
+
+        teams = res.json().get("data", [])
+        if not teams:
+            raise ValueError(f"La API no devolvió ningún resultado para: {team_name}")
+
+        # Intento 1: Coincidencia exacta
+        for team in teams:
+            if team["name"].lower() == team_name.lower():
+                return team["id"]
+
+        # Intento 2: Fallback al primer resultado parcial de la búsqueda
+        return teams[0]["id"]
 
     def _fetch_single_match_stats(self, match: dict) -> dict:
-        """Función auxiliar para descargar estadísticas individuales."""
+        """Descarga las estadísticas avanzadas de un partido individual."""
         match_id = match.get("id")
         if not match_id:
             return match
@@ -36,27 +48,24 @@ class StatsAPIClient:
         try:
             stats_res = self.session.get(f"{self.base_url}/matches/{match_id}/stats", timeout=5)
             if stats_res.status_code == 200:
-                match["detailed_stats"] = stats_res.json().get("stats", {})
+                match["detailed_stats"] = stats_res.json().get("data", {})
         except requests.RequestException:
-            match["detailed_stats"] = {} # Fallback seguro si falla la red
+            match["detailed_stats"] = {}
             
         return match
 
     def get_last_10_matches_stats(self, team_id: int) -> list:
-        """Obtiene los últimos 10 partidos finalizados optimizando con concurrencia."""
+        """Obtiene el historial optimizando la descarga mediante subprocesos en paralelo."""
         res = self.session.get(
             f"{self.base_url}/teams/{team_id}/matches", 
             params={"limit": 10, "status": "FINISHED"}
         )
         res.raise_for_status()
-        matches = res.json().get("matches", [])
+        matches = res.json().get("data", [])
         
-        # OPTIMIZACIÓN: Descarga paralela utilizando un pool de hilos (Multi-threading)
         detailed_matches = []
         with ThreadPoolExecutor(max_workers=5) as executor:
-            # Lanzamos las 10 llamadas HTTP en paralelo
             futures = {executor.submit(self._fetch_single_match_stats, m): m for m in matches}
-            
             for future in as_completed(futures):
                 detailed_matches.append(future.result())
                 
@@ -66,8 +75,4 @@ class StatsAPIClient:
         if not match_id:
             return {}
         res = self.session.get(f"{self.base_url}/matches/{match_id}/odds")
-        return res.json().get("odds", {}) if res.status_code == 200 else {}
-
-    def get_player_stats(self, player_id: str) -> dict:
-        res = self.session.get(f"{self.base_url}/players/{player_id}/stats")
-        return res.json().get("stats", {}) if res.status_code == 200 else {}
+        return res.json().get("data", {}) if res.status_code == 200 else {}
