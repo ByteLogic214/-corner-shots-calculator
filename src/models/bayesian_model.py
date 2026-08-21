@@ -5,8 +5,8 @@ class BayesianHierarchicalEngine:
         prior_mean = league_avg
         prior_var = 2.0
         
-        obs_mean = home_feat["weighted_corners"] + away_feat["weighted_corners"]
-        obs_var = max(1.0, home_feat["var_corners"] + away_feat["var_corners"])
+        obs_mean = home_feat.get("weighted_corners", 4.5) + away_feat.get("weighted_corners", 4.5)
+        obs_var = max(1.0, home_feat.get("var_corners", 1.0) + away_feat.get("var_corners", 1.0))
         
         precision_prior = 1.0 / prior_var
         precision_obs = 1.0 / obs_var
