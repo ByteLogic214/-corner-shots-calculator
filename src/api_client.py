@@ -5,22 +5,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 class StatsAPIClient:
     def __init__(self):
         self.api_key = os.getenv("THESTATSAPI_KEY")
-        self.base_url = "https://thestatsapi.com"
+        # Base de enrutamiento oficial según especificaciones de la API
+        self.base_url = "https://api.thestatsapi.com/api/football"
         
-        # Autenticación oficial mediante Bearer token
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json"
         })
 
-    def get_competitions(self) -> list:
-        res = self.session.get(f"{self.base_url}/competitions")
-        res.raise_for_status()
-        return res.json().get("data", [])
-
     def search_team_id(self, team_name: str) -> int:
-        """Busca el ID de un equipo usando parámetros reales filtrando coincidencias."""
+        """Busca el ID de un equipo usando los parámetros exactos y la clave data de la API."""
         res = self.session.get(
             f"{self.base_url}/teams",
             params={"search": team_name, "per_page": 100}
@@ -29,18 +24,18 @@ class StatsAPIClient:
 
         teams = res.json().get("data", [])
         if not teams:
-            raise ValueError(f"La API no devolvió ningún resultado para: {team_name}")
+            raise ValueError(f"La API no devolvió ningún resultado para el equipo: {team_name}")
 
-        # Intento 1: Coincidencia exacta
+        # Intento 1: Coincidencia exacta estricta
         for team in teams:
             if team["name"].lower() == team_name.lower():
                 return team["id"]
 
-        # Intento 2: Fallback al primer resultado parcial de la búsqueda
+        # Intento 2: Fallback al primer resultado si no hay coincidencia idéntica
         return teams[0]["id"]
 
     def _fetch_single_match_stats(self, match: dict) -> dict:
-        """Descarga las estadísticas avanzadas de un partido individual."""
+        """Descarga las estadísticas detalladas usando la sub-ruta de la API por cada match_id."""
         match_id = match.get("id")
         if not match_id:
             return match
@@ -55,10 +50,10 @@ class StatsAPIClient:
         return match
 
     def get_last_10_matches_stats(self, team_id: int) -> list:
-        """Obtiene el historial optimizando la descarga mediante subprocesos en paralelo."""
+        """Obtiene los últimos 10 encuentros filtrando por team_id en la raíz de matches."""
         res = self.session.get(
-            f"{self.base_url}/teams/{team_id}/matches", 
-            params={"limit": 10, "status": "FINISHED"}
+            f"{self.base_url}/matches", 
+            params={"team_id": team_id, "limit": 10, "status": "finished"}
         )
         res.raise_for_status()
         matches = res.json().get("data", [])
